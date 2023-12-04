@@ -1,0 +1,1298 @@
+/*
+************* HelperDao ****************
+using System.Data.SqlClient;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Reflection.Metadata;
+
+namespace CineCordobaBack.Datos
+{
+    public class HelperDao
+    {
+        private static HelperDao instancia;
+        private SqlConnection cnn;
+
+
+        private HelperDao()
+        {
+            cnn = new SqlConnection("Data Source=(localdb)\\local;Initial Catalog=Cordoba_Cine_GRUPO_N9;Integrated Security=True");
+        }
+
+        public static HelperDao ObtenerInstancia()
+        {
+            if (instancia == null)
+            {
+                instancia = new HelperDao();
+            }
+            return instancia;
+        }
+
+        public SqlConnection ObtenerConexion()
+        { return cnn; }
+
+        public int EjecutarSp(string spNombre, List<Parametro> listaParametros)
+        {
+            int filasAfectadas = 0;
+            SqlTransaction t = null;
+
+            if (cnn != null && cnn.State == ConnectionState.Open)
+                cnn.Close();
+
+
+            try
+            {
+                cnn.Open();
+                t = cnn.BeginTransaction();
+                SqlCommand cmd = new SqlCommand(spNombre, cnn, t);
+                cmd.CommandType = CommandType.StoredProcedure;
+
+                if (listaParametros != null)
+                {
+                    foreach (Parametro oParametro in listaParametros)
+                    {
+                        cmd.Parameters.AddWithValue(oParametro.Nombre, oParametro.Valor);
+                    }
+                }
+                filasAfectadas = cmd.ExecuteNonQuery();
+                t.Commit();
+            }
+            catch (SqlException)
+            {
+                if (t != null)
+                { t.Rollback(); }
+            }
+            finally
+            {
+                if (cnn != null && cnn.State == ConnectionState.Open)
+                    cnn.Close();
+
+            }
+            return filasAfectadas;
+        }
+
+        public DataTable ConsultaTabla(string spNombre, List<Parametro> listaParametros)
+        {
+            DataTable dt = new DataTable();
+            cnn.Open();
+            SqlCommand cmd = new SqlCommand(spNombre, cnn);
+            cmd.CommandType = CommandType.StoredProcedure;
+            if (listaParametros != null)
+            {
+                foreach (Parametro oParametro in listaParametros)
+                {
+                    cmd.Parameters.AddWithValue(oParametro.Nombre, oParametro.Valor);
+                }
+            }
+            dt.Load(cmd.ExecuteReader());
+            cnn.Close();
+            return dt;
+        }
+        public DataTable Consultar(string nombreSP)
+        {
+            cnn.Open();
+            SqlCommand comando = new SqlCommand();
+            comando.Connection = cnn;
+            comando.CommandType = CommandType.StoredProcedure;
+            comando.CommandText = nombreSP;
+            DataTable tabla = new DataTable();
+            tabla.Load(comando.ExecuteReader());
+            cnn.Close();
+            return tabla;
+        }
+
+        public int ConsultarEscalar(string nombreSP, string nombreParamOut)
+        {
+            cnn.Open();
+            SqlCommand comando = new SqlCommand();
+            comando.Connection = cnn;
+            comando.CommandType = CommandType.StoredProcedure;
+            comando.CommandText = nombreSP;
+            SqlParameter parametro = new SqlParameter();
+            parametro.ParameterName = nombreParamOut;
+            parametro.SqlDbType = SqlDbType.Int;
+            parametro.Direction = ParameterDirection.Output;
+
+            comando.Parameters.Add(parametro);
+            comando.ExecuteNonQuery();
+
+            cnn.Close();
+
+            return (int)parametro.Value;
+        }
+
+        public int ConsultaEscalarConParametros(string spNombre, string pOutNombre, List<Parametro> listaParámetros)
+        {
+            if (cnn != null && cnn.State == ConnectionState.Open)
+                cnn.Close();
+            cnn.Open();
+            SqlCommand cmd = new SqlCommand(spNombre, cnn);
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            if (listaParámetros != null)
+            {
+                foreach (Parametro oParametro in listaParámetros)
+                {
+                    cmd.Parameters.AddWithValue(oParametro.Nombre, oParametro.Valor);
+                }
+            }
+
+            SqlParameter pOut = new SqlParameter();
+            pOut.ParameterName = pOutNombre;
+            pOut.DbType = DbType.Int32;
+            pOut.Direction = ParameterDirection.Output;
+            cmd.Parameters.Add(pOut);
+            cmd.ExecuteNonQuery();
+            cnn.Close();
+            return (int)pOut.Value;
+        }
+
+
+
+
+    }
+}
+
+********************* Parametro ******************
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CineCordobaBack.Datos
+{
+    public class Parametro
+    {
+        public string Nombre { get; set; }
+        public object Valor { get; set; }
+        public Parametro(string nombre, object valor)
+        {
+            Nombre = nombre;
+            Valor = valor;
+        }
+    }
+}
+
+
+*****************FABRICA ********************
+
+
+******* FabricaServicio
+using CineCordobaBack.Servicios.Interfaz;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CineCordobaBack.Servicios.Fabrica
+{
+    public abstract class FabricaServicio
+    {
+        public abstract IServicio CrearServicio();
+    }
+}
+
+
+******* FabricaServicioImp
+
+using CineCordobaBack.Servicios.Implementacion;
+using CineCordobaBack.Servicios.Interfaz;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CineCordobaBack.Servicios.Fabrica
+{
+    public class FabricaServicioImp : FabricaServicio
+    {
+        public override IServicio CrearServicio()
+        {
+            return new Servicio();
+        }
+    }
+}
+
+
+
+**************** Servicios *******************
+
+**** INTERFAZ
+
+using CineCordobaBack.Entidades;
+using CineCordobaBack.Entidades.Dto;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CineCordobaBack.Servicios.Interfaz
+{
+    public interface IServicio
+    {
+        List<DtoPeliculas> traerPeliculas();
+        int ProximaFuncion();
+        List<Entidades.Dto.DtoHorario> traerHorarios();
+        List<Sucursales> traerSucursales();
+        List<DtoTipoSalas> traerSalas(int idSucursal);
+        //
+        List<Clientes> ConsultarClientes();
+        List<Barrios> ConsultarBarrios();
+        List<TipoDoc> ConsultarTipo_Documento();
+        bool EliminarCliente(int id_cliente);
+        Clientes ConsultarClientesId(int id_cliente);
+        bool ModificarClientes(Clientes clientes);
+
+    }
+}
+
+*************** IMPLEMENTACION
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using CineCordobaBack.Entidades;
+using CineCordobaBack.Servicios.Interfaz;
+using CineCordobaBack.Fachada.Concretas;
+using System.Data;
+using CineCordobaBack.Fachada.Interfaces;
+using CineCordobaBack.Datos.Implementacion;
+using CineCordobaBack.Datos.Interfaz;
+using CineCordobaBack.Entidades.Dto;
+
+namespace CineCordobaBack.Servicios.Implementacion
+{
+    public class Servicio : IServicio
+    {
+        private IDaoCliente dao;
+        private IFuncionDao funcionDao;
+
+        public Servicio()
+        {
+            dao = new DaoCliente();
+            funcionDao = new FuncionDao();
+        }
+        public int ProximaFuncion()
+        {
+            return funcionDao.ObtenerProximaFuncion();
+        }
+
+        public List<Entidades.Dto.DtoHorario> traerHorarios()
+        {
+            return funcionDao.obtenerHorarios();
+        }
+
+        public List<DtoPeliculas> traerPeliculas()
+        {
+            return funcionDao.obtenerPeliculas();
+        }
+
+        public List<DtoTipoSalas> traerSalas(int idSucursal)
+        {
+            return funcionDao.obtenerSalas(idSucursal);
+        }
+
+        public List<Sucursales> traerSucursales()
+        {
+            return funcionDao.obtenerSucursales();
+        }
+
+        //
+
+        public List<Clientes> ConsultarClientes()
+        {
+            return dao.ConsultarClientes();
+        }
+
+        public List<Barrios> ConsultarBarrios()
+        {
+            return dao.ConsultarBarrios();
+        }
+        public List<TipoDoc> ConsultarTipo_Documento()
+        {
+            return dao.ConsultarTipo_Documento();
+
+
+        }
+
+        public bool EliminarCliente(int id_cliente)
+        {
+            return dao.EliminarCliente(id_cliente);
+        }
+
+        public Clientes ConsultarClientesId(int id_cliente)
+        {
+            return dao.ConsultarClientesId(id_cliente);
+        }
+
+        public bool ModificarClientes(Clientes clientes)
+        {
+            return dao.ModificarClientes(clientes);
+
+        }
+    }
+}
+
+***** FACHADA **********
+
+**** INTERFAZ
+using CineCordobaBack.Entidades;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CineCordobaBack.Fachada.Interfaces
+{
+    public interface IDaoCliente
+    {
+        List<Clientes> ConsultarClientes();
+        List<Barrios> ConsultarBarrios();
+        List<TipoDoc> ConsultarTipo_Documento();
+        Clientes ConsultarClientesId(int idCliente);
+        bool EliminarCliente(int id_cliente);
+        bool ModificarClientes(Clientes clientes);
+
+
+	int ObtenerProximoCliente();
+       bool CrearCliente(DtoCliente oClientes);
+       List<DtoBarrio> obtenerBarrio(int idProvincia);
+       List<Ciudades> obtenerCiudades();
+       List<DtoTipoDoc> obtenerDocumentos();
+	
+
+    }
+}
+
+***** IMPLEMENTACION
+
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using CineCordobaBack.Datos;
+using CineCordobaBack.Entidades;
+using System.Data.SqlClient;
+using Microsoft.Identity.Client;
+using CineCordobaBack.Fachada.Interfaces;
+
+namespace CineCordobaBack.Fachada.Concretas
+{
+    public class DaoCliente : IDaoCliente
+    {
+        public List<Clientes> ConsultarClientes()
+        {
+            SqlConnection cnn = HelperDao.ObtenerInstancia().ObtenerConexion();
+            cnn.Open();
+            SqlCommand cmd = new SqlCommand();
+            cmd.Connection = cnn;
+            cmd.CommandText = "[spConsultarClientes]";
+            cmd.CommandType = CommandType.StoredProcedure;
+            DataTable dt = new DataTable();
+            dt.Load(cmd.ExecuteReader());
+
+            List<Clientes> lstc = new List<Clientes>();
+            foreach (DataRow fila in dt.Rows)
+            {
+                int clienteId = Convert.ToInt32(fila[0]);
+                string nombre = fila[1].ToString();
+                string apellido = fila[2].ToString();
+                DateTime fecha_nac = Convert.ToDateTime(fila[3]);
+                int telefono = Convert.ToInt32(fila[4]);
+                string email = fila[5].ToString();
+
+                string calle = fila[7].ToString();
+                int altura = Convert.ToInt32(fila[8]);
+
+                int nro_doc = Convert.ToInt32((int)fila[10]);
+
+                Clientes c = new Clientes(clienteId, nombre, apellido, fecha_nac, telefono, email, calle, altura, nro_doc);
+                lstc.Add(c);
+            }
+
+
+            cnn.Close();
+            return lstc;
+        }
+
+        public List<Barrios> ConsultarBarrios()
+        {
+            SqlConnection cnn = HelperDao.ObtenerInstancia().ObtenerConexion();
+            cnn.Open();
+            SqlCommand cmd = new SqlCommand();
+            cmd.Connection = cnn;
+            cmd.CommandText = "cargarBarrios";
+            cmd.CommandType = CommandType.StoredProcedure;
+            DataTable dt = new DataTable();
+            dt.Load(cmd.ExecuteReader());
+
+            List<Barrios> lstb = new List<Barrios>();
+            foreach (DataRow fila in dt.Rows)
+            {
+                int qbarrioId = Convert.ToInt32(fila[0]);
+                string qnombreBarrio = fila[1].ToString();
+
+
+
+
+                Barrios b = new Barrios(qbarrioId, qnombreBarrio);
+                lstb.Add(b);
+            }
+
+
+            cnn.Close();
+            return lstb;
+        }
+
+        public List<TipoDoc> ConsultarTipo_Documento()
+        {
+            SqlConnection cnn = HelperDao.ObtenerInstancia().ObtenerConexion();
+            cnn.Open();
+            SqlCommand cmd = new SqlCommand();
+            cmd.Connection = cnn;
+            cmd.CommandText = "spCargarTipoDocumento";
+            cmd.CommandType = CommandType.StoredProcedure;
+            DataTable dt = new DataTable();
+            dt.Load(cmd.ExecuteReader());
+
+            List<TipoDoc> lsttb = new List<TipoDoc>();
+            foreach (DataRow fila in dt.Rows)
+            {
+                int qtipodocid = Convert.ToInt32(fila[0]);
+                string qtipodocumento = fila[1].ToString();
+
+                TipoDoc td = new TipoDoc(qtipodocid, qtipodocumento);
+                lsttb.Add(td);
+            }
+
+
+            cnn.Close();
+            return lsttb;
+        }
+        public bool EliminarCliente(int id_cliente)
+        {
+            bool aux = false;
+            string sp = "SP_ELIMINAR_CLIENTE";
+            List<Parametro> lst = new List<Parametro>();
+            lst.Add(new Parametro("@id_cliente", id_cliente));
+            int filasAfectadas = HelperDao.ObtenerInstancia().EjecutarSp(sp, lst);
+            if (filasAfectadas > 0)
+            {
+                aux = true;
+            }
+            return aux;
+        }
+
+
+        public Clientes ConsultarClientesId(int idCliente)
+        {
+            List<Parametro> lstParametros = new List<Parametro>();
+            Clientes Clientesq = new Clientes();
+            Parametro parametroId = new Parametro("@id_cliente", idCliente);
+            lstParametros.Add(parametroId);
+
+            DataTable dt = HelperDao.ObtenerInstancia().ConsultaTabla("sp_consultar_cliente_id", lstParametros);
+
+            foreach (DataRow dr in dt.Rows)
+            {
+                Clientesq.id_cliente = Convert.ToInt32(dr["id_cliente"].ToString());
+                Clientesq.Nombre = dr["nombre"].ToString();
+                Clientesq.Apellido = dr["apellido"].ToString();
+                Clientesq.FechaNac = Convert.ToDateTime(dr["fecha_nac"].ToString());
+                Clientesq.Telefono = Convert.ToInt32(dr["teléfono"].ToString());
+                Clientesq.Email = dr["email"].ToString();
+                Clientesq.id_barrio = Convert.ToInt32(dr["id_barrio"].ToString());
+                Clientesq.Calle = dr["calle"].ToString();
+                Clientesq.Altura = Convert.ToInt32(dr["altura"].ToString());
+                Clientesq.id_tipo_doc = Convert.ToInt32(dr["id_tipo_doc"].ToString());
+                Clientesq.NroDoc = Convert.ToInt32(dr["nro_doc"].ToString());
+
+                
+                break;
+            }
+
+            return Clientesq;
+        }
+        public bool ModificarClientes(Clientes clientes)
+        {
+            bool ok = true;
+            SqlTransaction t = null;
+            SqlConnection cnn = HelperDao.ObtenerInstancia().ObtenerConexion();
+
+            try
+            {
+                cnn.Open();
+                t = cnn.BeginTransaction();
+
+                using (SqlCommand cmd = new SqlCommand())
+                {
+                    cmd.Transaction = t;
+                    cmd.Connection = cnn;
+                    cmd.CommandText = "ModificarCliente";
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+
+                    cmd.Parameters.AddWithValue("@id_cliente", clientes.id_cliente);
+                    cmd.Parameters.AddWithValue("@nombre", clientes.Nombre);
+                    cmd.Parameters.AddWithValue("@apellido", clientes.Apellido);
+                    cmd.Parameters.AddWithValue("@fecha_nac", clientes.FechaNac);
+                    cmd.Parameters.AddWithValue("@telefono", clientes.Telefono);
+                    cmd.Parameters.AddWithValue("@email", clientes.Email);
+                    cmd.Parameters.AddWithValue("@id_barrio", clientes.id_barrio);
+                    cmd.Parameters.AddWithValue("@calle", clientes.Calle);
+                    cmd.Parameters.AddWithValue("@altura", clientes.Altura);
+                    cmd.Parameters.AddWithValue("@id_tipo_doc", clientes.id_tipo_doc);
+                    cmd.Parameters.AddWithValue("@nro_doc", clientes.NroDoc);
+
+                    cmd.ExecuteNonQuery();
+                }
+
+                t.Commit();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al modificar Cliente: {ex.Message}");
+                t?.Rollback();
+                ok = false;
+            }
+            finally
+            {
+                if (cnn.State == ConnectionState.Open)
+                {
+                    cnn.Close();
+                }
+            }
+
+            return ok;
+        }
+    }
+}
+
+
+using CineCordobaBack.Datos.Interfaz;
+using CineCordobaBack.Entidades;
+using CineCordobaBack.Entidades.Dto;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace CineCordobaBack.Datos.Implementacion
+{
+    public class ClienteDao : IClienteDao
+    {
+        public int ObtenerProximoCliente()
+        {
+            return HelperDao.ObtenerInstancia().ConsultarEscalar("SP_PROXIMO_CLIENTES", "@next");
+        }
+
+        public bool CrearCliente(DtoCliente oClientes)
+        {
+            bool resultado = true;
+
+            SqlConnection conexion = HelperDao.ObtenerInstancia().ObtenerConexion();
+            conexion.Open();
+            SqlCommand comandoCliente = new SqlCommand("sp_insertarCliente", conexion);
+            comandoCliente.CommandType = CommandType.StoredProcedure;
+            comandoCliente.Parameters.AddWithValue("@nombre", oClientes.Nombre);
+            comandoCliente.Parameters.AddWithValue("@apellido", oClientes.Apellido);
+            comandoCliente.Parameters.AddWithValue("@fecha_nac", oClientes.FechaNac);
+            comandoCliente.Parameters.AddWithValue("@telefono", oClientes.Telefono);
+            comandoCliente.Parameters.AddWithValue("@email", oClientes.Email);
+
+            comandoCliente.Parameters.AddWithValue("@id_barrio", oClientes.Barrio.Id_barrio);
+            comandoCliente.Parameters.AddWithValue("@calle", oClientes.Calle);
+            comandoCliente.Parameters.AddWithValue("@altura", oClientes.Altura);
+            comandoCliente.Parameters.AddWithValue("@id_tipo_doc", oClientes.TipoDocId.TipoDocId);
+            comandoCliente.Parameters.AddWithValue("@nro_doc", oClientes.NroDoc);
+            SqlParameter param = new SqlParameter("@id_cliente", SqlDbType.Int);
+            param.Direction = ParameterDirection.Output;
+            comandoCliente.Parameters.Add(param);
+            comandoCliente.ExecuteNonQuery();
+            int ultimoID = Convert.ToInt32(param.Value);
+            conexion.Close();
+            return resultado;
+
+        }
+        
+            
+        
+
+        public List<DtoBarrio> obtenerBarrio(int idciudad)
+        {
+            {
+                List<DtoBarrio> lbarrios = new List<DtoBarrio>();
+                List<Parametro> lparam = new List<Parametro>();
+                Parametro parametro = new Parametro("@id_ciudad", idciudad);
+                lparam.Add(parametro);
+                DataTable tabla = HelperDao.ObtenerInstancia().ConsultaTabla("sp_barrios", lparam);
+
+                foreach (DataRow fila in tabla.Rows)
+                {
+                    int id_barrio = int.Parse(fila["id_barrio"].ToString());
+                    string barrio = fila["barrio"].ToString();
+
+                    DtoBarrio b = new DtoBarrio(id_barrio, barrio);
+                    lbarrios.Add(b);
+
+                }
+                return lbarrios;
+            }
+        }
+
+        public List<Ciudades> obtenerCiudades()
+        {
+            List<Ciudades> lciudades = new List<Ciudades>();
+            DataTable tabla = HelperDao.ObtenerInstancia().Consultar("sp_Ciudad");
+            foreach (DataRow fila in tabla.Rows)
+            {
+
+                int id_ciudad = int.Parse(fila["id_ciudad"].ToString());
+                string nombre_ciudad = fila["ciudad"].ToString();
+                Ciudades c = new Ciudades(id_ciudad,nombre_ciudad);
+                lciudades.Add(c);
+            }
+            return lciudades;
+        }
+
+        public List<DtoTipoDoc> obtenerDocumentos()
+        {
+            List<DtoTipoDoc> ldocumentos = new List<DtoTipoDoc>();
+            DataTable tabla = HelperDao.ObtenerInstancia().Consultar("Sp_tipo_Doc");
+            foreach (DataRow fila in tabla.Rows)
+            {                
+                int id_tipodoc = int.Parse(fila["id_tipo_doc"].ToString());
+                string tipo = fila["tipo_doc"].ToString();
+                DtoTipoDoc d = new DtoTipoDoc(id_tipodoc, tipo);
+                ldocumentos.Add(d);
+            }
+            return ldocumentos;
+        }
+
+
+    }
+}
+
+********************* FORMS ******************
+
+
+******************** FORM ALTA
+
+using CineCordobaBack.Entidades;
+using CineCordobaBack.Entidades.Dto;
+using CineCordobaBack.Fachada.Implementaciones;
+using CineCordobaBack.Fachada.Interfaces;
+using CineCordobaBack.Servicios;
+using CineCordobaBack.Servicios.Interfaz;
+using CineCordobaFront.Cliente;
+using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace CineCordobaFront.Presentacion
+{
+    public partial class FrmAltaClientes : Form
+    {
+        IAplicacion aplicacion = null;
+        DtoCliente oCliente = null;
+        public FrmAltaClientes()
+        {
+            InitializeComponent();
+            oCliente = new DtoCliente();
+            aplicacion = new Aplicacion();
+
+        }
+
+        private async void FrmAltaClientes_Load(object sender, EventArgs e)
+        {
+            await ProximoCliente();
+            await CargarCiudadesAsync();
+            await CargarDocumentosAsync();
+            
+            LimpiarCampos();
+        }
+
+        private async Task<int> ProximoCliente()
+          {
+            string url = "https://localhost:7055/proxCliente";
+            var DataJson = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            int v = JsonConvert.DeserializeObject<int>(DataJson);
+            return v;
+        }
+
+        private void LimpiarCampos()
+        {
+            txtNombre.Text = "";
+            txtApellido.Text = "";
+            txtDocumento.Text = "";
+            txtCorreoElec.Text = "";
+            txtCalle.Text = "";
+            txtAltura.Text = "";
+            dtpFechaNac.Value = DateTime.Now;
+            cboBarrio.SelectedIndex = -1;
+            cboCiudad.SelectedIndex = -1;
+            cboTipoDoc.SelectedIndex = -1;
+
+        }
+
+        private async Task CargarDocumentosAsync()
+        {
+            string url = "https://localhost:7055/traerTipoDocumentos";
+            var DataJson = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            List<DtoTipoDoc> ldoc = JsonConvert.DeserializeObject<List<DtoTipoDoc>>(DataJson);
+
+            cboTipoDoc.DataSource = ldoc;
+            cboTipoDoc.ValueMember = "TipoDocId";
+            cboTipoDoc.DisplayMember = "TipoDocumento";
+            cboTipoDoc.DropDownStyle = ComboBoxStyle.DropDownList;
+        }
+
+        private async Task CargarCiudadesAsync()
+        {
+            string url = "https://localhost:7055/traerCiudades";
+            var DataJson = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            List<Ciudades> lciudad = JsonConvert.DeserializeObject<List<Ciudades>>(DataJson);
+
+            cboCiudad.DataSource = lciudad;
+            cboCiudad.ValueMember = "id_ciudad";
+            cboCiudad.DisplayMember = "ciudad";
+            cboCiudad.DropDownStyle = ComboBoxStyle.DropDownList;
+            
+        }
+
+        private void cboCiudad_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            int IdCiudadSeleccionada = Convert.ToInt32(cboCiudad.SelectedIndex + 1);
+            CargarBarriosAsync(IdCiudadSeleccionada);
+        }
+
+        private async Task CargarBarriosAsync(int id)
+        {
+            string url = "https://localhost:7055/traerBarrios" + "?id=" + id;
+            var DataJson = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            List<DtoBarrio> lbarrios = JsonConvert.DeserializeObject<List<DtoBarrio>>(DataJson);
+
+            cboBarrio.DataSource = lbarrios;
+            cboBarrio.ValueMember = "id_barrio";
+            cboBarrio.DisplayMember = "NombreBarrio";
+            cboBarrio.DropDownStyle = ComboBoxStyle.DropDownList;
+        }
+
+
+        private async void btnConfirmar_Click(object sender, EventArgs e)
+        {
+            if (validar())
+            {
+                DtoCliente cliente = new DtoCliente();
+
+                cliente.ClienteId = await ProximoCliente();
+                cliente.Nombre = txtNombre.Text;
+                cliente.Apellido = txtApellido.Text;
+                cliente.NroDoc = int.Parse(txtDocumento.Text);
+                cliente.Email = txtCorreoElec.Text;
+                cliente.Calle = txtCalle.Text;
+                cliente.Altura = int.Parse(txtAltura.Text);
+                cliente.FechaNac = Convert.ToDateTime(dtpFechaNac.Value);
+                cliente.Telefono = int.Parse(txtTelefono.Text);
+                cliente.Barrio = (DtoBarrio)cboBarrio.SelectedItem;
+                cliente.TipoDocId = (DtoTipoDoc)cboTipoDoc.SelectedItem;
+
+
+                if (await crearClienteAsync(cliente))
+                {
+                    MessageBox.Show("Se registró con éxito el cliente...", "Informe", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                    this.Dispose();
+                }
+                else
+                {
+                    MessageBox.Show("NO se pudo registrar el cliente...", "Error", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                }
+            }
+        }
+
+        private async Task<bool> crearClienteAsync(DtoCliente cliente)
+        {
+
+            string url = "https://localhost:7055/AltaCliente";
+            string FuncionJson = JsonConvert.SerializeObject(cliente);
+            var DataJson = await ClienteSingleton.ObtenerInstancia().PostAsync(url, FuncionJson);
+            return DataJson.Equals("true");
+        }
+
+        private bool validar()
+        {
+            bool v = true;
+
+            if (dtpFechaNac.Value >= DateTime.Now.AddYears(-18))
+            {
+                MessageBox.Show("el cliente debe ser mayor de edad", "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                dtpFechaNac.Focus();
+                v = false;
+            }
+            if (string.IsNullOrEmpty(txtNombre.Text) || int.TryParse(txtNombre.Text, out _))
+            {
+                MessageBox.Show("Debe ingresar un nombre, que no incluya numeros", "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtNombre.Focus();
+                v = false;
+            }
+            if (string.IsNullOrEmpty(txtApellido.Text) || int.TryParse(txtApellido.Text, out _))
+            {
+                MessageBox.Show("Debe ingresar un apellido, que no incluya numeros", "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtApellido.Focus();
+                v = false;
+            }
+            if (string.IsNullOrEmpty(txtCorreoElec.Text))
+            {
+                MessageBox.Show("Debe ingresar el correo electronico", "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtCorreoElec.Focus();
+                v = false;
+            }
+            if (string.IsNullOrEmpty(txtDocumento.Text) || !int.TryParse(txtDocumento.Text, out _))
+            {
+                MessageBox.Show("El NRO de documento solo permite numeros", "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtDocumento.Focus();
+                v = false;
+            }
+            if (!int.TryParse(txtTelefono.Text, out _))
+            {
+                MessageBox.Show("El telefono solo permite numeros", "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtTelefono.Focus();
+                v = false;
+            }
+            if (string.IsNullOrEmpty(txtAltura.Text) || !int.TryParse(txtAltura.Text, out _))
+            {
+                MessageBox.Show("La altura solo permite numeros", "error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtAltura.Focus();
+                v = false;
+            }
+
+
+
+            return v;
+        }
+
+        private void btnCancelar_Click(object sender, EventArgs e)
+        {
+            if (MessageBox.Show("¿Desea Cancelar la carga de la funcion?", "Cancelar.", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                this.Dispose();
+            }
+        }
+    }
+}
+
+
+******************** FORM CONSULTAR  ****************************
+
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using CineCordobaBack.Datos;
+using CineCordobaBack.Entidades;
+using CineCordobaBack.Servicios.Fabrica;
+using CineCordobaFront.Cliente;
+using CineCordobaBack.Servicios.Implementacion;
+using CineCordobaBack.Servicios.Interfaz;
+using Newtonsoft.Json;
+
+namespace CineCordobaFront.Presentacion
+{
+    public partial class FrmConsultarCliente : Form
+    {
+        private IServicio servicio;
+        private FabricaServicio oFabrica;
+
+        public FrmConsultarCliente(FabricaServicio oFabrica)
+        {
+            InitializeComponent();
+
+            servicio = oFabrica.CrearServicio();
+            this.oFabrica = oFabrica;
+        }
+
+        private async void FrmConsultarCliente_Load(object sender, EventArgs e)
+        {
+            await CargarComboAsync();
+        }
+        private async Task CargarComboAsync()
+        {
+            string url = "https://localhost:7055/clientes";
+            var data = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            List<Clientes> lst = JsonConvert.DeserializeObject<List<Clientes>>(data);
+            cboSeleccionarCliente.DataSource = lst;
+            cboSeleccionarCliente.ValueMember = "id_cliente";
+            cboSeleccionarCliente.DisplayMember = "apellido";
+            cboSeleccionarCliente.DropDownStyle = ComboBoxStyle.DropDownList;
+
+        }
+
+        private void BtnConsultar_Click(object sender, EventArgs e)
+        {
+            ConsultarClientes();
+        }
+        private void ConsultarClientes()
+        {
+            if (cboSeleccionarCliente.SelectedItem != null)
+            {
+                Clientes c = (Clientes)cboSeleccionarCliente.SelectedItem;
+
+
+                foreach (DataGridViewRow fila in dgvConsultarClientes.Rows)
+                {
+                    if (c.id_cliente == Convert.ToInt32(fila.Cells["ColId"].Value))
+                    {
+                        MessageBox.Show("Ya consulto este cliente");
+                        return;
+                    }
+
+                }
+                int id_cliente = Convert.ToInt32(c.id_cliente);
+                string nombre = c.Nombre;
+                string apellido = c.Apellido;
+                DateTime fecha_nacimiento = c.FechaNac;
+                int telefono = c.Telefono;
+                string email = c.Email;
+                string calle = c.Calle;
+                int altura = c.Altura;
+                int nro_documento = c.NroDoc;
+
+                dgvConsultarClientes.Rows.Add(id_cliente, nombre, apellido, fecha_nacimiento, telefono, email, calle, altura, nro_documento);
+            }
+            else
+            {
+                MessageBox.Show("No cliente selected.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
+
+        }
+        private async void dgvConsultarClientes_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (dgvConsultarClientes.CurrentCell.ColumnIndex == 10)
+            {
+                int id_cliente = Convert.ToInt32(dgvConsultarClientes.CurrentRow.Cells["ColId"].Value.ToString());
+                if (servicio.EliminarCliente(id_cliente))
+                {
+                    _ = MessageBox.Show("¿Esta seguro que quiere eliminar el cliente?", "Eliminar", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation) == DialogResult.Yes;
+                    Limpiar();
+                }
+                else
+                {
+                    MessageBox.Show("Error al eliminar el cliente.", "Error.", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+            }
+            else if (dgvConsultarClientes.CurrentCell.ColumnIndex == 9)
+            {
+                int idq = Convert.ToInt32(dgvConsultarClientes.CurrentRow.Cells["ColId"].Value.ToString());
+
+                new FrmModificarCliente(idq, oFabrica).ShowDialog();
+            }
+
+            Limpiar();
+            await CargarComboAsync();
+        }
+
+        private void BtnSalir_Click(object sender, EventArgs e)
+        {
+            if (MessageBox.Show("¿Desea salir?", "Salir.", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                this.Dispose();
+            }
+        }
+        public void Limpiar()
+        {
+
+            dgvConsultarClientes.Rows.Clear();
+        }
+    }
+}
+
+
+
+****************** FORM MODIFICAR ***********************
+
+
+using CineCordobaBack.Entidades;
+using CineCordobaBack.Servicios.Implementacion;
+using CineCordobaBack.Servicios.Interfaz;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using CineCordobaFront.Presentacion;
+using CineCordobaBack.Fachada.Concretas;
+using CineCordobaBack.Fachada.Interfaces;
+using CineCordobaBack.Servicios.Fabrica;
+using CineCordobaFront.Cliente;
+using Newtonsoft.Json;
+
+
+namespace CineCordobaFront.Presentacion
+{
+    public partial class FrmModificarCliente : Form
+    {
+        private IServicio oServicio;
+        private FabricaServicio oFabrica;
+
+        private Clientes oCliente;
+        private int idCliente;
+        public FrmModificarCliente(int id_cliente, FabricaServicio oFabrica)
+        {
+            InitializeComponent();
+
+            oServicio = oFabrica.CrearServicio();
+            oCliente = new Clientes();
+            this.oFabrica = oFabrica;
+            this.idCliente = id_cliente;
+        }
+
+        private async void FrmModificarCliente_Load(object sender, EventArgs e)
+        {
+            
+            await cargarCombos();
+            cargarNumeroCliente();
+        }
+
+        private void btnCancelar_Click(object sender, EventArgs e)
+        {
+            if (MessageBox.Show("¿Desea Salir?", "Salir.", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                this.Dispose();
+            }
+        }
+        private async Task<Clientes> ConsultarClientesId(int idCliente)
+        {
+            string url = "https://localhost:7055/clienteSegunId?id_cliente=" + "?idCliente=" + idCliente.ToString();
+            var data = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            Clientes oCliente = JsonConvert.DeserializeObject<Clientes>(data);
+
+            return oCliente;
+        }
+       
+        private async Task cargarCombos()
+        {
+            await cargarBarrios();
+            await cargarTipoDocumento();
+        }
+        private async Task cargarBarrios()
+        {
+            string url = "https://localhost:7055/barrios";
+            var data = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            List<Barrios> lst = JsonConvert.DeserializeObject<List<Barrios>>(data);
+            cboBarrio.DataSource = lst;
+            cboBarrio.ValueMember = "id_barrio";
+            cboBarrio.DisplayMember = "barrio";
+            cboBarrio.DropDownStyle = ComboBoxStyle.DropDownList;
+        }
+
+        private async Task cargarTipoDocumento()
+        {
+            string url = "https://localhost:7055/tipo_documentos";
+            var data = await ClienteSingleton.ObtenerInstancia().GetAsync(url);
+            List<TipoDoc> lst = JsonConvert.DeserializeObject<List<TipoDoc>>(data);
+            cboTipoDocumento.DataSource = lst;
+            cboTipoDocumento.ValueMember = "id_tipo_documento";
+            cboTipoDocumento.DisplayMember = "TipoDocumento";
+            cboTipoDocumento.DropDownStyle = ComboBoxStyle.DropDownList;
+
+        }
+        private async void BtnModificar_Click(object sender, EventArgs e)
+        {
+            await ModificarCliente();
+        }
+        private async Task ModificarCliente()
+        {
+            if (validar())
+            {
+                if (MessageBox.Show("Confirme la modificacion del cliente", "Modificación", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation) == DialogResult.Yes)
+                {
+                    try
+                    {
+                        {
+                            Clientes c = await ConsultarClientesId(idCliente);
+                            int id_cliente = idCliente;
+
+
+                            oCliente.id_cliente = Convert.ToInt32(id_cliente);
+                            oCliente.Nombre = txtNombre.Text;
+                            oCliente.Apellido = txtApellido.Text;
+                            oCliente.Telefono = Convert.ToInt32(txtTelefono.Text);
+                            oCliente.Email = txtEmail.Text;
+                            oCliente.FechaNac = dtpFechaNacimiento.Value;
+                            oCliente.id_barrio = Convert.ToInt32(cboBarrio.SelectedValue);
+                            oCliente.Calle = txtCalle.Text;
+                            oCliente.Altura = Convert.ToInt32(txtAltura.Text);
+                            oCliente.id_tipo_doc = Convert.ToInt32(cboTipoDocumento.SelectedValue);
+                            oCliente.NroDoc = Convert.ToInt32(txtDocumento.Text);
+
+                            if (oServicio.ModificarClientes(oCliente))
+                            {
+                                MessageBox.Show("Se actualizó el cliente con éxito");
+                            }
+                            else
+                            {
+                                MessageBox.Show("No se pudo actualizar el cliente");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error al modificar el cliente: {ex.Message}");
+                    }
+                }
+            }
+            Dispose();
+
+        }
+        public bool validar()
+        {
+            if (cboTipoDocumento.SelectedIndex == -1)
+            {
+                MessageBox.Show("Seleccione un tipo de documento");
+                return false;
+            }
+
+            if (cboBarrio.SelectedIndex == -1)
+            {
+                MessageBox.Show("Seleccione un barrio");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtNombre.Text))
+            {
+                MessageBox.Show("Escriba un nombre");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtApellido.Text))
+            {
+                MessageBox.Show("Escriba un apellido");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtCalle.Text))
+            {
+                MessageBox.Show("Escriba una calle");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtEmail.Text))
+            {
+                MessageBox.Show("Escriba un Email");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtDocumento.Text))
+            {
+                MessageBox.Show("Escriba un documento");
+                return false;
+            }
+
+            if (!int.TryParse(txtDocumento.Text, out int documento) || documento <= 0)
+            {
+                MessageBox.Show("Ingrese un valor numérico mayor que cero para el documento");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtTelefono.Text))
+            {
+                MessageBox.Show("Escriba un telefono");
+                return false;
+            }
+
+            if (!int.TryParse(txtTelefono.Text, out int telefono) || telefono <= 0)
+            {
+                MessageBox.Show("Ingrese un valor numérico mayor que cero para el teléfono");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtAltura.Text))
+            {
+                MessageBox.Show("Escriba una altura de calle");
+                return false;
+            }
+
+            if (!int.TryParse(txtAltura.Text, out int altura) || altura <= 0)
+            {
+                MessageBox.Show("Ingrese un valor numérico mayor que cero para la altura");
+                return false;
+            }
+
+            return true;
+        }
+
+
+        private void cargarNumeroCliente()
+        {
+            lblClienteNro.Text = "Cliente Nro:" + " " + idCliente.ToString();
+        }
+    }
+}
+
+
+******* Para hacer que espere *******
+
+   private async Task RealizarOperacionAsincrona()
+   {
+       await Task.Delay(3000);
+   }
+
+
+*****Para abrir desde el boton *****
+     private async void crearFuncionToolStripMenuItem_Click(object sender, EventArgs e)
+     {
+         await RealizarOperacionAsincrona();
+
+         AltaFunciones altaCliente = new AltaFunciones();
+         altaCliente.ShowDialog();
+     }
+
+
+
+
+
+
+
+
+
+*/
